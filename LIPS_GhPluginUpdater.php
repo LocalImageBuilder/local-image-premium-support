@@ -3,7 +3,9 @@
 declare(strict_types=1);
 
 /**
- * Update WordPress plugin from a GitHub repository.
+ * Update WordPress plugin from a public GitHub repository without the GitHub API.
+ *
+ * Reads the Version header from main, then downloads a matching release tag zip.
  */
 class LIPS_GhPluginUpdater
 {
@@ -12,13 +14,14 @@ class LIPS_GhPluginUpdater
     private $basename;
     private $slug;
     private $active = false;
-    private $github_response;
+    private $remote_version;
 
     public function __construct($file)
     {
         $this->file     = $file;
         $this->basename = plugin_basename($this->file);
         $this->slug     = dirname($this->basename);
+
         if ('.' === $this->slug) {
             $this->slug = basename($this->file, '.php');
         }
@@ -27,7 +30,6 @@ class LIPS_GhPluginUpdater
     public function init(): void
     {
         add_filter('pre_set_site_transient_update_plugins', array($this, 'modify_transient'), 10, 1);
-        add_filter('http_request_args', array($this, 'set_header_token'), 10, 2);
         add_filter('plugins_api', array($this, 'plugin_popup'), 10, 3);
         add_filter('upgrader_post_install', array($this, 'after_install'), 10, 3);
     }
@@ -42,20 +44,26 @@ class LIPS_GhPluginUpdater
             return $transient;
         }
 
-        $this->get_repository_info();
         $this->get_plugin_data();
-
-        $remote_version = $this->normalize_version($this->github_response['tag_name'] ?? '');
+        $remote_version = $this->get_remote_version();
         $local_version  = $transient->checked[ $this->basename ];
 
-        if ($remote_version && version_compare($remote_version, $local_version, 'gt')) {
-            $transient->response[ $this->basename ] = (object) array(
-                'url'         => $this->plugin_data['PluginURI'],
-                'slug'        => $this->slug,
-                'package'     => $this->github_response['zipball_url'],
-                'new_version' => $remote_version,
-            );
+        if (! $remote_version || version_compare($remote_version, $local_version, '<=')) {
+            return $transient;
         }
+
+        $package_url = $this->get_package_url($remote_version);
+
+        if (! $this->package_exists($package_url)) {
+            return $transient;
+        }
+
+        $transient->response[ $this->basename ] = (object) array(
+            'url'         => $this->plugin_data['PluginURI'],
+            'slug'        => $this->slug,
+            'package'     => $package_url,
+            'new_version' => $remote_version,
+        );
 
         return $transient;
     }
@@ -66,23 +74,21 @@ class LIPS_GhPluginUpdater
             return $result;
         }
 
-        $this->get_repository_info();
         $this->get_plugin_data();
+        $remote_version = $this->get_remote_version();
 
         return (object) array(
             'name'              => $this->plugin_data['Name'],
             'slug'              => $this->slug,
-            'version'           => $this->normalize_version($this->github_response['tag_name'] ?? ''),
+            'version'           => $remote_version,
             'author'            => $this->plugin_data['AuthorName'],
             'author_profile'    => $this->plugin_data['AuthorURI'],
-            'last_updated'      => $this->github_response['published_at'] ?? '',
             'homepage'          => $this->plugin_data['PluginURI'],
             'short_description' => $this->plugin_data['Description'],
             'sections'          => array(
                 'Description' => $this->plugin_data['Description'],
-                'Updates'     => $this->github_response['body'] ?? '',
             ),
-            'download_link'     => $this->github_response['zipball_url'],
+            'download_link'     => $this->get_package_url($remote_version),
         );
     }
 
@@ -90,8 +96,18 @@ class LIPS_GhPluginUpdater
     {
         global $wp_filesystem;
 
+        if (! isset($hook_extra['plugin']) || $hook_extra['plugin'] !== $this->basename) {
+            return $response;
+        }
+
+        if (! is_array($result) || empty($result['destination'])) {
+            return $response;
+        }
+
+        $this->active      = is_plugin_active($this->basename);
         $install_directory = plugin_dir_path($this->file);
-        $wp_filesystem->move($result['destination'], $install_directory);
+
+        $wp_filesystem->move($result['destination'], $install_directory, true);
         $result['destination'] = $install_directory;
 
         if ($this->active) {
@@ -101,55 +117,67 @@ class LIPS_GhPluginUpdater
         return $response;
     }
 
-    public function set_header_token($parsed_args, $url)
+    private function get_remote_version(): string
     {
-        $parsed_url = parse_url($url);
-
-        if ('api.github.com' === ($parsed_url['host'] ?? null) && isset($parsed_url['query'])) {
-            parse_str($parsed_url['query'], $query);
-
-            if (isset($query['access_token']) && LIPS_GHPU_AUTH_TOKEN) {
-                $parsed_args['headers']['Authorization'] = 'token ' . LIPS_GHPU_AUTH_TOKEN;
-                $this->active                            = is_plugin_active($this->basename);
-            }
+        if (null !== $this->remote_version) {
+            return $this->remote_version;
         }
 
-        return $parsed_args;
+        $this->remote_version = '';
+        $request              = wp_remote_get($this->get_raw_plugin_url(), array(
+            'timeout'   => 5,
+            'sslverify' => true,
+        ));
+
+        if (is_wp_error($request)) {
+            return $this->remote_version;
+        }
+
+        $body = wp_remote_retrieve_body($request);
+
+        if (preg_match('/Version:\s*([^\r\n*]+)/i', $body, $matches)) {
+            $this->remote_version = trim($matches[1]);
+        }
+
+        return $this->remote_version;
     }
 
-    private function get_repository_info(): void
+    private function get_package_url(string $version): string
     {
-        if (null !== $this->github_response) {
-            return;
-        }
+        return sprintf(
+            'https://github.com/%s/%s/archive/refs/tags/%s.zip',
+            rawurlencode(LIPS_GHPU_USERNAME),
+            rawurlencode(LIPS_GHPU_REPOSITORY),
+            rawurlencode($version)
+        );
+    }
 
-        $args = array(
-            'method'      => 'GET',
+    private function get_raw_plugin_url(): string
+    {
+        return sprintf(
+            'https://raw.githubusercontent.com/%s/%s/%s/%s',
+            rawurlencode(LIPS_GHPU_USERNAME),
+            rawurlencode(LIPS_GHPU_REPOSITORY),
+            rawurlencode(LIPS_GHPU_BRANCH),
+            rawurlencode(basename($this->file))
+        );
+    }
+
+    private function package_exists(string $url): bool
+    {
+        $response = wp_remote_head($url, array(
             'timeout'     => 5,
             'redirection' => 5,
-            'httpversion' => '1.0',
             'sslverify'   => true,
-        );
+        ));
 
-        if (LIPS_GHPU_AUTH_TOKEN) {
-            $args['headers'] = array(
-                'Authorization' => 'token ' . LIPS_GHPU_AUTH_TOKEN,
-            );
+        if (is_wp_error($response)) {
+            return false;
         }
 
-        $request_uri = sprintf(LIPS_GH_REQUEST_URI, LIPS_GHPU_USERNAME, LIPS_GHPU_REPOSITORY);
-        $request     = wp_remote_get($request_uri, $args);
-        $response    = json_decode(wp_remote_retrieve_body($request), true);
+        $code = (int) wp_remote_retrieve_response_code($response);
 
-        if (is_array($response) && isset($response[0])) {
-            $response = $response[0];
-        }
-
-        if (LIPS_GHPU_AUTH_TOKEN && is_array($response) && ! empty($response['zipball_url'])) {
-            $response['zipball_url'] = add_query_arg('access_token', LIPS_GHPU_AUTH_TOKEN, $response['zipball_url']);
-        }
-
-        $this->github_response = is_array($response) ? $response : array();
+        return $code >= 200 && $code < 400;
     }
 
     private function get_plugin_data(): void
@@ -157,10 +185,5 @@ class LIPS_GhPluginUpdater
         if (null === $this->plugin_data) {
             $this->plugin_data = get_plugin_data($this->file);
         }
-    }
-
-    private function normalize_version($version): string
-    {
-        return ltrim((string) $version, 'vV');
     }
 }

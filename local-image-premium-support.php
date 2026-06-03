@@ -14,19 +14,16 @@ License URI: https://www.gnu.org/licenses/gpl-2.0.html
 // If this file is called directly, abort. //
 if ( ! defined( 'WPINC' ) ) {die;} // end if
 
-// GitHub plugin updates (token optional for private repos — set in wp-config.php).
+// GitHub updates: version from main, download matching tag zip (public repo, no API).
 if ( is_admin() ) {
-	if ( ! defined( 'LIPS_GH_REQUEST_URI' ) ) {
-		define( 'LIPS_GH_REQUEST_URI', 'https://api.github.com/repos/%s/%s/releases' );
-	}
 	if ( ! defined( 'LIPS_GHPU_USERNAME' ) ) {
 		define( 'LIPS_GHPU_USERNAME', 'LocalImageBuilder' );
 	}
 	if ( ! defined( 'LIPS_GHPU_REPOSITORY' ) ) {
 		define( 'LIPS_GHPU_REPOSITORY', 'local-image-premium-support' );
 	}
-	if ( ! defined( 'LIPS_GHPU_AUTH_TOKEN' ) ) {
-		define( 'LIPS_GHPU_AUTH_TOKEN', '' );
+	if ( ! defined( 'LIPS_GHPU_BRANCH' ) ) {
+		define( 'LIPS_GHPU_BRANCH', 'main' );
 	}
 
 	require_once plugin_dir_path( __FILE__ ) . 'LIPS_GhPluginUpdater.php';
