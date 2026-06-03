@@ -5,9 +5,10 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Update WordPress plugin from a public GitHub repository without the GitHub API.
+ * Update WordPress plugin from a GitHub repository without the GitHub API.
  *
  * Reads the Version header from main, then downloads a matching release tag zip.
+ * Public repos need no token; private repos require LIPS_GHPU_AUTH_TOKEN in wp-config.php.
  */
 class LIPS_GhPluginUpdater {
 
@@ -32,6 +33,10 @@ class LIPS_GhPluginUpdater {
 		add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'modify_transient' ), 10, 1 );
 		add_filter( 'plugins_api', array( $this, 'plugin_popup' ), 10, 3 );
 		add_filter( 'upgrader_post_install', array( $this, 'after_install' ), 10, 3 );
+
+		if ( LIPS_GHPU_AUTH_TOKEN ) {
+			add_filter( 'http_request_args', array( $this, 'authorize_github_request' ), 10, 2 );
+		}
 	}
 
 	public function modify_transient( $transient ) {
@@ -113,21 +118,35 @@ class LIPS_GhPluginUpdater {
 		return $response;
 	}
 
+	public function authorize_github_request( $parsed_args, $url ) {
+		if ( ! $this->is_github_url( $url ) ) {
+			return $parsed_args;
+		}
+
+		$parsed_args['headers']['Authorization'] = 'Bearer ' . LIPS_GHPU_AUTH_TOKEN;
+
+		if ( is_plugin_active( $this->basename ) ) {
+			$this->active = true;
+		}
+
+		return $parsed_args;
+	}
+
 	private function get_remote_version() {
 		if ( null !== $this->remote_version ) {
 			return $this->remote_version;
 		}
 
 		$this->remote_version = '';
-		$request              = wp_remote_get(
-			$this->get_raw_plugin_url(),
-			array(
-				'timeout'   => 5,
-				'sslverify' => true,
-			)
-		);
+		$request              = wp_remote_get( $this->get_raw_plugin_url(), $this->get_request_args() );
 
 		if ( is_wp_error( $request ) ) {
+			return $this->remote_version;
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $request );
+
+		if ( $code < 200 || $code >= 300 ) {
 			return $this->remote_version;
 		}
 
@@ -141,12 +160,18 @@ class LIPS_GhPluginUpdater {
 	}
 
 	private function get_package_url( $version ) {
-		return sprintf(
+		$url = sprintf(
 			'https://github.com/%s/%s/archive/refs/tags/%s.zip',
 			rawurlencode( LIPS_GHPU_USERNAME ),
 			rawurlencode( LIPS_GHPU_REPOSITORY ),
 			rawurlencode( $version )
 		);
+
+		if ( LIPS_GHPU_AUTH_TOKEN ) {
+			$url = add_query_arg( 'access_token', LIPS_GHPU_AUTH_TOKEN, $url );
+		}
+
+		return $url;
 	}
 
 	private function get_raw_plugin_url() {
@@ -160,14 +185,7 @@ class LIPS_GhPluginUpdater {
 	}
 
 	private function package_exists( $url ) {
-		$response = wp_remote_head(
-			$url,
-			array(
-				'timeout'     => 5,
-				'redirection' => 5,
-				'sslverify'   => true,
-			)
-		);
+		$response = wp_remote_head( $url, $this->get_request_args() );
 
 		if ( is_wp_error( $response ) ) {
 			return false;
@@ -176,6 +194,32 @@ class LIPS_GhPluginUpdater {
 		$code = (int) wp_remote_retrieve_response_code( $response );
 
 		return $code >= 200 && $code < 400;
+	}
+
+	private function get_request_args() {
+		$args = array(
+			'timeout'     => 15,
+			'redirection' => 5,
+			'sslverify'   => true,
+		);
+
+		if ( LIPS_GHPU_AUTH_TOKEN ) {
+			$args['headers'] = array(
+				'Authorization' => 'Bearer ' . LIPS_GHPU_AUTH_TOKEN,
+			);
+		}
+
+		return $args;
+	}
+
+	private function is_github_url( $url ) {
+		$host = wp_parse_url( $url, PHP_URL_HOST );
+
+		if ( ! is_string( $host ) ) {
+			return false;
+		}
+
+		return in_array( $host, array( 'github.com', 'raw.githubusercontent.com', 'codeload.github.com', 'api.github.com' ), true );
 	}
 
 	private function get_plugin_data() {

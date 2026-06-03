@@ -31,6 +31,10 @@ class LIPS_LI_Tools {
 			array( 'lips-support-styles' ),
 			'1.0.0'
 		);
+
+		if ( 'image-alts' === self::get_current_tab() ) {
+			LIPS_Image_Alts::enqueue_admin_assets();
+		}
 	}
 
 	public static function maybe_serve_llms_txt() {
@@ -130,6 +134,9 @@ class LIPS_LI_Tools {
 						case 'llms-txt':
 							self::render_llms_txt_tab();
 							break;
+						case 'image-alts':
+							LIPS_Image_Alts::render_tab();
+							break;
 					}
 					?>
 				</div>
@@ -198,7 +205,8 @@ class LIPS_LI_Tools {
 
 	private static function get_tabs() {
 		return array(
-			'llms-txt' => 'llms.txt',
+			'llms-txt'   => 'llms.txt',
+			'image-alts' => 'Image Alts',
 		);
 	}
 
@@ -220,7 +228,7 @@ class LIPS_LI_Tools {
 		return $tab;
 	}
 
-	private static function get_tab_url( $tab ) {
+	public static function get_tab_url( $tab ) {
 		return add_query_arg(
 			array(
 				'page' => self::PAGE_SLUG,
