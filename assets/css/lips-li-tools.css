@@ -1,0 +1,270 @@
+/* LI Tools admin page */
+
+.lips-li-tools-wrap {
+	max-width: 960px;
+	font-family: 'Raleway', sans-serif;
+}
+
+.lips-li-tools-wrap * {
+	box-sizing: border-box;
+}
+
+/* Header */
+.lips-li-tools-header {
+	display: flex;
+	align-items: center;
+	gap: 14px;
+	margin: 12px 0 28px;
+	padding-bottom: 20px;
+	border-bottom: 3px solid #1d1d1b;
+}
+
+.lips-li-tools-header__icon {
+	width: 44px;
+	height: 44px;
+	flex-shrink: 0;
+}
+
+.lips-li-tools-header__title {
+	margin: 0;
+	font-family: 'Google Now', sans-serif;
+	font-weight: 700;
+	font-size: 1.75rem;
+	line-height: 1.2;
+	text-transform: uppercase;
+	color: #1d1d1b;
+}
+
+.lips-li-tools-header__title span {
+	font-family: 'moontime', Helvetica, Arial, Lucida, sans-serif;
+	font-weight: 500;
+	font-size: 2.4rem;
+	text-transform: none;
+	line-height: 1;
+	position: relative;
+	top: 2px;
+	margin-right: 2px;
+}
+
+.lips-li-tools-header__subtitle {
+	margin: 4px 0 0;
+	color: #646970;
+	font-size: 0.95rem;
+}
+
+/* Tabs */
+.lips-li-tools-tabs {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0;
+	background: #1d1d1b;
+	border-radius: 6px 6px 0 0;
+	overflow: hidden;
+}
+
+.lips-li-tools-tabs__link {
+	display: inline-block;
+	padding: 14px 22px;
+	color: #fff;
+	text-decoration: none;
+	font-weight: 600;
+	font-size: 0.95rem;
+	border-right: 1px solid #545454;
+	transition: background 0.2s ease, color 0.2s ease;
+}
+
+.lips-li-tools-tabs__link:last-child {
+	border-right: 0;
+}
+
+.lips-li-tools-tabs__link:hover,
+.lips-li-tools-tabs__link:focus {
+	color: #fff;
+	background: #333331;
+}
+
+.lips-li-tools-tabs__link.is-active {
+	background: #fff;
+	color: #1d1d1b;
+}
+
+/* Panel */
+.lips-li-tools-panel {
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-top: 0;
+	border-radius: 0 0 6px 6px;
+	box-shadow: 0 8px 24px rgba(29, 29, 27, 0.08);
+}
+
+.lips-li-tools-panel__inner {
+	padding: 28px 32px 32px;
+}
+
+.lips-li-tools-panel__title {
+	margin: 0 0 8px;
+	font-family: 'Google Now', sans-serif;
+	font-weight: 700;
+	font-size: 1.35rem;
+	color: #1d1d1b;
+}
+
+/* Notices inside panel */
+.lips-li-tools-panel .notice {
+	margin: 0 0 20px;
+}
+
+/* Info callout */
+.lips-li-tools-callout {
+	margin: 0 0 24px;
+	padding: 16px 18px;
+	background: #f6f7f7;
+	border-left: 4px solid #1d1d1b;
+	border-radius: 0 4px 4px 0;
+	color: #3c434a;
+	font-size: 0.95rem;
+	line-height: 1.6;
+}
+
+.lips-li-tools-callout p {
+	margin: 0;
+}
+
+/* URL bar */
+.lips-li-tools-url {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 12px;
+	margin-bottom: 28px;
+	padding: 14px 16px;
+	background: #1d1d1b;
+	border-radius: 6px;
+}
+
+.lips-li-tools-url__label {
+	color: #a7aaad;
+	font-size: 0.8rem;
+	font-weight: 600;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	width: 100%;
+	margin-bottom: -4px;
+}
+
+.lips-li-tools-url__value {
+	flex: 1;
+	min-width: 200px;
+	margin: 0;
+	padding: 10px 14px;
+	background: #2a2a28;
+	border-radius: 4px;
+	color: #f0f0f1;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 0.9rem;
+	word-break: break-all;
+}
+
+.lips-li-tools-url__link {
+	display: inline-flex;
+	align-items: center;
+	padding: 10px 16px;
+	background: #fff;
+	color: #1d1d1b !important;
+	border-radius: 4px;
+	font-weight: 600;
+	font-size: 0.875rem;
+	text-decoration: none;
+	transition: background 0.2s ease;
+}
+
+.lips-li-tools-url__link:hover,
+.lips-li-tools-url__link:focus {
+	background: #f0f0f1;
+	color: #1d1d1b !important;
+}
+
+/* Editor */
+.lips-li-tools-editor {
+	margin-bottom: 8px;
+}
+
+.lips-li-tools-editor__label {
+	display: block;
+	margin-bottom: 10px;
+	font-weight: 600;
+	font-size: 0.95rem;
+	color: #1d1d1b;
+}
+
+.lips-li-tools-editor__textarea {
+	display: block;
+	width: 100%;
+	min-height: 340px;
+	padding: 16px 18px;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+	background: #fafafa;
+	color: #1d1d1b;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 13px;
+	line-height: 1.55;
+	resize: vertical;
+	transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.lips-li-tools-editor__textarea:focus {
+	border-color: #1d1d1b;
+	box-shadow: 0 0 0 1px #1d1d1b;
+	outline: none;
+	background: #fff;
+}
+
+.lips-li-tools-editor__hint {
+	margin: 8px 0 0;
+	color: #646970;
+	font-size: 0.85rem;
+}
+
+/* Save button */
+.lips-li-tools-actions {
+	margin-top: 24px;
+	padding-top: 24px;
+	border-top: 1px solid #dcdcde;
+}
+
+.lips-li-tools-actions .button-primary {
+	background: #1d1d1b !important;
+	border-color: #1d1d1b !important;
+	color: #fff !important;
+	padding: 6px 24px !important;
+	height: auto !important;
+	font-size: 0.95rem !important;
+	font-weight: 600 !important;
+	border-radius: 4px !important;
+	box-shadow: none !important;
+	text-shadow: none !important;
+}
+
+.lips-li-tools-actions .button-primary:hover,
+.lips-li-tools-actions .button-primary:focus {
+	background: #333331 !important;
+	border-color: #333331 !important;
+}
+
+@media screen and (max-width: 782px) {
+	.lips-li-tools-panel__inner {
+		padding: 20px 16px 24px;
+	}
+
+	.lips-li-tools-tabs__link {
+		flex: 1 1 auto;
+		text-align: center;
+		border-right: 0;
+		border-bottom: 1px solid #545454;
+	}
+
+	.lips-li-tools-tabs__link:last-child {
+		border-bottom: 0;
+	}
+}

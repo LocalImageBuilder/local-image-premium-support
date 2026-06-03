@@ -85,10 +85,17 @@ if ( file_exists( LIPS_CORE_INC . 'lips-shortcodes.php' ) ) {
 if ( file_exists( LIPS_CORE_INC . 'sev-checker.php' ) ) {
   require_once LIPS_CORE_INC . 'sev-checker.php';
 }
+// Load LI Tools (llms.txt and related utilities)
+if ( file_exists( LIPS_CORE_INC . 'lips-li-tools.php' ) ) {
+  require_once LIPS_CORE_INC . 'lips-li-tools.php';
+}
 
 
 // Initialize the SEV checker
 add_action('plugins_loaded', 'SEV_Checker::init');
+
+// Initialize LI Tools
+add_action('plugins_loaded', array( 'LIPS_LI_Tools', 'init' ) );
 
 // Run SEV check immediately on activation
 register_activation_hook(__FILE__, function() {
