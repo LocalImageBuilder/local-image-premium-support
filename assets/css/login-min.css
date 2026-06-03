@@ -1,0 +1,31 @@
+	.login h1 a{
+		background-repeat: no-repeat;
+		margin:0 auto;
+		width:300px;
+		max-width:300px;
+		background-image: url("../img/LocalImage_1.png");
+		background-size:150px;
+		height:100px;
+	}
+	#login {
+		max-width:320px;
+		font-family: 'Raleway', sans-serif !important;
+	}
+	.login form {
+		background: #f1eff0 !important;
+		color: #222;
+	}
+.wp-core-ui .button-primary {
+    background: #1d1d1b;
+    border-color: #1d1d1b;
+    color: #fff;
+    text-decoration: none;
+    text-shadow: none;
+}
+.wp-core-ui .button-primary:hover {
+    background:#545454;
+    border-color: #545454;
+}
+.login .message, .login .notice, .login .success {
+    border-left: 4px solid #545454;
+}
