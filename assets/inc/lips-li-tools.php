@@ -47,6 +47,8 @@ class LIPS_LI_Tools {
 		status_header( 200 );
 		nocache_headers();
 		header( 'Content-Type: text/plain; charset=UTF-8' );
+		// Plain text file output; content is sanitized when saved.
+		// phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 		echo $content;
 		exit;
 	}
@@ -72,8 +74,7 @@ class LIPS_LI_Tools {
 
 		check_admin_referer( 'lips_save_llms_txt' );
 
-		$content = isset( $_POST['lips_llms_txt'] ) ? wp_unslash( $_POST['lips_llms_txt'] ) : '';
-		$content = sanitize_textarea_field( $content );
+		$content = sanitize_textarea_field( wp_unslash( (string) ( $_POST['lips_llms_txt'] ?? '' ) ) );
 
 		update_option( self::OPTION_KEY, $content );
 
@@ -116,7 +117,7 @@ class LIPS_LI_Tools {
 				<?php foreach ( $tabs as $tab_id => $tab_label ) : ?>
 					<a
 						href="<?php echo esc_url( self::get_tab_url( $tab_id ) ); ?>"
-						class="lips-li-tools-tabs__link<?php echo $current_tab === $tab_id ? ' is-active' : ''; ?>"
+						class="lips-li-tools-tabs__link<?php echo esc_attr( $current_tab === $tab_id ? ' is-active' : '' ); ?>"
 					><?php echo esc_html( $tab_label ); ?></a>
 				<?php endforeach; ?>
 			</nav>
@@ -203,7 +204,14 @@ class LIPS_LI_Tools {
 
 	private static function get_current_tab() {
 		$tabs = self::get_tabs();
-		$tab  = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : self::DEFAULT_TAB;
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Admin tab navigation only.
+		if ( ! isset( $_GET['page'] ) || self::PAGE_SLUG !== sanitize_key( wp_unslash( $_GET['page'] ) ) ) {
+			return self::DEFAULT_TAB;
+		}
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Admin tab navigation only.
+		$tab = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : self::DEFAULT_TAB;
 
 		if ( ! isset( $tabs[ $tab ] ) ) {
 			return self::DEFAULT_TAB;
@@ -227,7 +235,7 @@ class LIPS_LI_Tools {
 			return false;
 		}
 
-		$request_uri = wp_unslash( $_SERVER['REQUEST_URI'] );
+		$request_uri = sanitize_text_field( wp_unslash( $_SERVER['REQUEST_URI'] ) );
 		$path        = wp_parse_url( $request_uri, PHP_URL_PATH );
 
 		if ( ! is_string( $path ) || '' === $path ) {

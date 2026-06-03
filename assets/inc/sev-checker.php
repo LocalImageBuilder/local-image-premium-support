@@ -1,4 +1,9 @@
 <?php
+
+if ( ! defined( 'WPINC' ) ) {
+	die;
+}
+
 class SEV_Checker {
     /**
      * Initialize the checker functionality
