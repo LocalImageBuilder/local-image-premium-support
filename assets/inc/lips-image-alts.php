@@ -122,7 +122,7 @@ class LIPS_Image_Alts {
 			'lips-image-alts-admin',
 			LIPS_CORE_JS . 'lips-image-alts-admin.js',
 			array(),
-			'1.0.3',
+			'1.0.4',
 			true
 		);
 
@@ -730,29 +730,159 @@ class LIPS_Image_Alts {
 	}
 
 	/**
-	 * SmartCrawl focus keyword for a post.
+	 * SmartCrawl focus keyword(s) for a post.
 	 */
 	private static function get_focus_keyword( $post_id ) {
-		$keyword = get_post_meta( $post_id, 'wds_focus_keyword', true );
+		$post_id = (int) $post_id;
 
-		if ( is_string( $keyword ) && '' !== trim( $keyword ) ) {
-			return trim( $keyword );
+		if ( ! $post_id ) {
+			return '';
 		}
 
-		$keywords = get_post_meta( $post_id, '_wds_focus_keywords', true );
+		if ( function_exists( 'smartcrawl_get_value' ) ) {
+			$formatted = self::format_focus_keywords( smartcrawl_get_value( 'focus-keywords', $post_id ) );
 
-		if ( is_array( $keywords ) ) {
-			$keywords = array_filter( array_map( 'trim', $keywords ) );
-			if ( $keywords ) {
-				return implode( ', ', $keywords );
+			if ( '' !== $formatted ) {
+				return $formatted;
 			}
 		}
 
-		if ( is_string( $keywords ) && '' !== trim( $keywords ) ) {
-			return trim( $keywords );
+		$meta_keys = array(
+			'_wds_focus-keywords',
+			'_wds_focus_keywords',
+			'_wds_focus_keyword',
+			'wds_focus_keyword',
+		);
+
+		foreach ( $meta_keys as $meta_key ) {
+			$formatted = self::format_focus_keywords( get_post_meta( $post_id, $meta_key, true ) );
+
+			if ( '' !== $formatted ) {
+				return $formatted;
+			}
+		}
+
+		$analysis = get_post_meta( $post_id, '_wds_analysis', true );
+
+		if ( is_array( $analysis ) ) {
+			foreach ( array( 'focus-keywords', 'focus_keywords', 'focuskw' ) as $key ) {
+				if ( empty( $analysis[ $key ] ) ) {
+					continue;
+				}
+
+				$formatted = self::format_focus_keywords( $analysis[ $key ] );
+
+				if ( '' !== $formatted ) {
+					return $formatted;
+				}
+			}
 		}
 
 		return '';
+	}
+
+	/**
+	 * Normalize SmartCrawl focus keyword meta into a single alt string.
+	 *
+	 * Multiple keywords are joined with " - ".
+	 */
+	private static function format_focus_keywords( $keywords ) {
+		$keywords = self::normalize_focus_keyword_value( $keywords );
+		$parts    = self::collect_focus_keyword_parts( $keywords );
+
+		if ( empty( $parts ) ) {
+			return '';
+		}
+
+		return implode( ' - ', $parts );
+	}
+
+	/**
+	 * Unserialize or decode stored focus keyword values.
+	 */
+	private static function normalize_focus_keyword_value( $value ) {
+		if ( is_string( $value ) ) {
+			$value = trim( $value );
+
+			if ( '' === $value ) {
+				return '';
+			}
+
+			$unserialized = maybe_unserialize( $value );
+
+			if ( $unserialized !== $value ) {
+				return $unserialized;
+			}
+
+			$decoded = json_decode( $value, true );
+
+			if ( JSON_ERROR_NONE === json_last_error() && is_array( $decoded ) ) {
+				return $decoded;
+			}
+		}
+
+		return $value;
+	}
+
+	/**
+	 * Flatten SmartCrawl focus keyword data into string parts.
+	 */
+	private static function collect_focus_keyword_parts( $keywords ) {
+		$keywords = self::normalize_focus_keyword_value( $keywords );
+
+		if ( is_string( $keywords ) || is_numeric( $keywords ) ) {
+			$text = trim( (string) $keywords );
+
+			if ( '' === $text ) {
+				return array();
+			}
+
+			if ( str_contains( $text, ',' ) ) {
+				return array_values(
+					array_filter(
+						array_map( 'trim', explode( ',', $text ) )
+					)
+				);
+			}
+
+			return array( $text );
+		}
+
+		if ( ! is_array( $keywords ) ) {
+			return array();
+		}
+
+		$parts = array();
+
+		foreach ( $keywords as $value ) {
+			if ( is_string( $value ) || is_numeric( $value ) ) {
+				$text = trim( (string) $value );
+
+				if ( '' !== $text ) {
+					$parts[] = $text;
+				}
+				continue;
+			}
+
+			if ( ! is_array( $value ) ) {
+				continue;
+			}
+
+			if ( isset( $value['keyword'] ) ) {
+				$text = trim( (string) $value['keyword'] );
+			} elseif ( isset( $value['focus-keyword'] ) ) {
+				$text = trim( (string) $value['focus-keyword'] );
+			} else {
+				$parts = array_merge( $parts, self::collect_focus_keyword_parts( $value ) );
+				continue;
+			}
+
+			if ( '' !== $text ) {
+				$parts[] = $text;
+			}
+		}
+
+		return array_values( array_unique( array_filter( $parts ) ) );
 	}
 
 	/**

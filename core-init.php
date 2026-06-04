@@ -25,13 +25,14 @@ add_action( 'plugins_loaded', array( 'LIPS_Image_Alts', 'init' ) );
 add_action( 'plugins_loaded', 'lips_init_github_updater' );
 
 register_activation_hook( LIPS_PLUGIN_FILE, array( 'SEV_Checker', 'run_check' ) );
+register_activation_hook( LIPS_PLUGIN_FILE, 'lips_check_for_update_on_activation' );
 register_deactivation_hook( LIPS_PLUGIN_FILE, array( 'SEV_Checker', 'cleanup' ) );
 
 /**
  * Enqueue admin styles and fonts.
  */
 function lips_admin_scripts() {
-	wp_enqueue_style( 'lips-support-styles', LIPS_CORE_CSS . 'admin-styles-min.css', array(), '1.0.10' );
+	wp_enqueue_style( 'lips-support-styles', LIPS_CORE_CSS . 'admin-styles-min.css', array(), '1.0.11' );
 	wp_enqueue_style( 'google-now-bold', 'https://fonts.googleapis.com/css?family=Google+Now:wght@700&display=swap', array(), '1.0' );
 	wp_enqueue_style( 'moontime', 'https://fonts.googleapis.com/css?family=Moontime&display=swap', array(), '1.0' );
 }
@@ -40,7 +41,7 @@ function lips_admin_scripts() {
  * Enqueue login screen styles.
  */
 function lips_login_logo_and_styles() {
-	wp_enqueue_style( 'lips-login', LIPS_CORE_CSS . 'login-min.css', array(), '1.0.10' );
+	wp_enqueue_style( 'lips-login', LIPS_CORE_CSS . 'login-min.css', array(), '1.0.11' );
 }
 
 /**
@@ -72,4 +73,21 @@ function lips_init_github_updater() {
 
 	$updater = new LIPS_GhPluginUpdater( LIPS_PLUGIN_FILE );
 	$updater->init();
+}
+
+/**
+ * Check for a GitHub update immediately after activation.
+ *
+ * plugins_loaded may have already run before a newly activated plugin
+ * is loaded, so the updater is initialized here before checking.
+ */
+function lips_check_for_update_on_activation() {
+	lips_init_github_updater();
+
+	if ( ! function_exists( 'wp_update_plugins' ) ) {
+		require_once ABSPATH . 'wp-admin/includes/update.php';
+	}
+
+	delete_site_transient( 'update_plugins' );
+	wp_update_plugins();
 }
