@@ -18,6 +18,11 @@
 	const statTotal = document.getElementById('lips-alt-stat-total');
 	const statMissing = document.getElementById('lips-alt-stat-missing');
 	const statWith = document.getElementById('lips-alt-stat-with');
+	const lastScan = document.getElementById('lips-alt-scan-last');
+	const lastScanTime = document.getElementById('lips-alt-scan-last-time');
+	const idleLabel = scanButton && scanButton.textContent.trim() === config.i18n.rescan
+		? config.i18n.rescan
+		: config.i18n.runScan;
 
 	function getSelectedPostTypes() {
 		return Array.from(document.querySelectorAll('[data-lips-scan-post-type]:checked')).map(function (input) {
@@ -169,12 +174,14 @@
 		let imagesFound = 0;
 		let missing = 0;
 		let withAlt = 0;
+		let scannedAt = '';
+		let completed = false;
 		const postTypes = getSelectedPostTypes();
 
 		if (!postTypes.length) {
 			window.alert(config.i18n.selectPostType);
 			scanButton.disabled = false;
-			scanButton.textContent = config.i18n.runScan;
+			scanButton.textContent = idleLabel;
 			return;
 		}
 
@@ -203,7 +210,18 @@
 					throw new Error('scan failed');
 				}
 
-				totalPosts = payload.data.total;
+				totalPosts = Math.max(totalPosts, payload.data.total || 0);
+
+				if (payload.data.scanned_at) {
+					scannedAt = payload.data.scanned_at;
+				}
+
+				if (!payload.data.batch) {
+					updateSummary(imagesFound, missing, withAlt);
+					updateProgress(Math.min(offset, totalPosts), totalPosts);
+					break;
+				}
+
 				offset += payload.data.batch;
 				imagesFound = payload.data.images_found || imagesFound;
 
@@ -223,12 +241,19 @@
 				updateSummary(imagesFound, missing, withAlt);
 				updateProgress(Math.min(offset, totalPosts), totalPosts);
 			} while (offset < totalPosts);
+
+			completed = true;
 		} catch (error) {
 			window.alert(config.i18n.scanError);
 		}
 
 		scanButton.disabled = false;
-		scanButton.textContent = config.i18n.runScan;
+		scanButton.textContent = completed ? config.i18n.rescan : idleLabel;
+
+		if (completed && scannedAt && lastScan && lastScanTime) {
+			lastScanTime.textContent = scannedAt;
+			lastScan.hidden = false;
+		}
 
 		if (imagesFound === 0) {
 			resultsBody.innerHTML = '<tr><td colspan="6">' + config.i18n.noResults + '</td></tr>';

@@ -29,7 +29,7 @@ class LIPS_LI_Tools {
 			'lips-li-tools',
 			LIPS_CORE_CSS . 'lips-li-tools.css',
 			array( 'lips-support-styles' ),
-			'1.0.0'
+			'1.0.1'
 		);
 
 		if ( 'image-alts' === self::get_current_tab() ) {

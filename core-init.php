@@ -32,7 +32,7 @@ register_deactivation_hook( LIPS_PLUGIN_FILE, array( 'SEV_Checker', 'cleanup' ) 
  * Enqueue admin styles and fonts.
  */
 function lips_admin_scripts() {
-	wp_enqueue_style( 'lips-support-styles', LIPS_CORE_CSS . 'admin-styles-min.css', array(), '1.0.11' );
+	wp_enqueue_style( 'lips-support-styles', LIPS_CORE_CSS . 'admin-styles-min.css', array(), '1.0.12' );
 	wp_enqueue_style( 'google-now-bold', 'https://fonts.googleapis.com/css?family=Google+Now:wght@700&display=swap', array(), '1.0' );
 	wp_enqueue_style( 'moontime', 'https://fonts.googleapis.com/css?family=Moontime&display=swap', array(), '1.0' );
 }
@@ -41,7 +41,7 @@ function lips_admin_scripts() {
  * Enqueue login screen styles.
  */
 function lips_login_logo_and_styles() {
-	wp_enqueue_style( 'lips-login', LIPS_CORE_CSS . 'login-min.css', array(), '1.0.11' );
+	wp_enqueue_style( 'lips-login', LIPS_CORE_CSS . 'login-min.css', array(), '1.0.12' );
 }
 
 /**
@@ -90,4 +90,71 @@ function lips_check_for_update_on_activation() {
 
 	delete_site_transient( 'update_plugins' );
 	wp_update_plugins();
+}
+
+add_filter( 'plugin_action_links_' . plugin_basename( LIPS_PLUGIN_FILE ), 'lips_plugin_action_links' );
+add_action( 'admin_post_lips_check_update', 'lips_handle_check_for_update' );
+add_action( 'admin_notices', 'lips_update_check_notice' );
+
+/**
+ * Plugins screen links for settings and a manual update check.
+ */
+function lips_plugin_action_links( $links ) {
+	$actions = array();
+
+	if ( current_user_can( 'manage_options' ) ) {
+		$actions[] = '<a href="' . esc_url( admin_url( 'tools.php?page=lips-li-tools' ) ) . '">' . esc_html__( 'Settings', 'local-image-premium-support' ) . '</a>';
+	}
+
+	if ( current_user_can( 'update_plugins' ) ) {
+		$check_url = wp_nonce_url(
+			admin_url( 'admin-post.php?action=lips_check_update' ),
+			'lips_check_update'
+		);
+		$actions[] = '<a href="' . esc_url( $check_url ) . '">' . esc_html__( 'Check for update', 'local-image-premium-support' ) . '</a>';
+	}
+
+	return array_merge( $actions, $links );
+}
+
+/**
+ * Refresh the GitHub update check from the Plugins screen.
+ */
+function lips_handle_check_for_update() {
+	if ( ! current_user_can( 'update_plugins' ) ) {
+		wp_die( esc_html__( 'You do not have permission to update plugins.', 'local-image-premium-support' ) );
+	}
+
+	check_admin_referer( 'lips_check_update' );
+
+	lips_check_for_update_on_activation();
+	set_transient( 'lips_update_checked_' . get_current_user_id(), 1, MINUTE_IN_SECONDS );
+
+	wp_safe_redirect( admin_url( 'plugins.php' ) );
+	exit;
+}
+
+/**
+ * Confirm a manual update check on the Plugins screen.
+ */
+function lips_update_check_notice() {
+	if ( ! current_user_can( 'update_plugins' ) ) {
+		return;
+	}
+
+	$notice_key = 'lips_update_checked_' . get_current_user_id();
+
+	if ( ! get_transient( $notice_key ) ) {
+		return;
+	}
+
+	delete_transient( $notice_key );
+
+	$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+
+	if ( ! $screen || 'plugins' !== $screen->id ) {
+		return;
+	}
+
+	echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Update check complete. If a newer version is available, it is listed below.', 'local-image-premium-support' ) . '</p></div>';
 }

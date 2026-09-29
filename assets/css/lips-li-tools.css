@@ -338,6 +338,12 @@
 	color: #646970;
 }
 
+.lips-alt-scanner__last {
+	margin: -8px 0 20px;
+	color: #646970;
+	font-size: 0.9rem;
+}
+
 .lips-alt-scanner__post-types {
 	display: flex;
 	flex-wrap: wrap;

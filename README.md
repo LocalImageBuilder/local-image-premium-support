@@ -4,7 +4,7 @@ Tags: hosting, support
 Requires at least: 5.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.0.11
+Stable tag: 1.0.12
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -15,6 +15,11 @@ Premium hosting plugin for support and upgrades. Only at Local Image.
 Premium hosting plugin for support and support desk integration. Only at Local Image.
 
 == Changelog ==
+
+= 1.0.12 =
+* Save generated image alts to the media library and detect more front-end images.
+* Keep the last Image Alts scan on the page until you rescan.
+* Add Plugins screen links for LI Tools settings and a manual update check.
 
 = 1.0.11 =
 * Fixed SmartCrawl focus keywords for Image Alts using correct meta keys and array formatting.

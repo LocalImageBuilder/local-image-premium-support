@@ -9,16 +9,23 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class LIPS_Image_Alts {
 
-	const OPTION_KEY     = 'li_tools_image_alt_settings';
-	const SCAN_BATCH     = 50;
+	const OPTION_KEY          = 'li_tools_image_alt_settings';
+	const SCAN_RESULTS_OPTION = 'lips_image_alts_scan_results';
+	const SCAN_BUFFER_OPTION  = 'lips_image_alts_scan_buffer';
+	const SCAN_BATCH          = 50;
 	const CACHE_TTL      = HOUR_IN_SECONDS;
 	const ALT_SEPARATOR  = ' – ';
 
 	public static function init() {
 		add_filter( 'wp_get_attachment_image_attributes', array( __CLASS__, 'filter_attachment_attributes' ), 10, 3 );
 		add_filter( 'the_content', array( __CLASS__, 'filter_content_images' ), 15 );
+		add_filter( 'render_block', array( __CLASS__, 'filter_rendered_block' ), 20, 2 );
+		add_filter( 'widget_text_content', array( __CLASS__, 'filter_content_images' ), 15 );
+		add_filter( 'widget_block_content', array( __CLASS__, 'filter_content_images' ), 15 );
+		add_filter( 'elementor/widget/render_content', array( __CLASS__, 'filter_content_images' ), 15 );
 
 		add_action( 'admin_init', array( __CLASS__, 'handle_save' ) );
+		add_action( 'pre_get_posts', array( __CLASS__, 'preserve_scan_query_args' ), 9999 );
 		add_action( 'wp_ajax_lips_scan_images', array( __CLASS__, 'ajax_scan_images' ) );
 	}
 
@@ -122,7 +129,7 @@ class LIPS_Image_Alts {
 			'lips-image-alts-admin',
 			LIPS_CORE_JS . 'lips-image-alts-admin.js',
 			array(),
-			'1.0.4',
+			'1.0.7',
 			true
 		);
 
@@ -141,6 +148,7 @@ class LIPS_Image_Alts {
 				'i18n'             => array(
 					'scanning'     => __( 'Scanning…', 'local-image-premium-support' ),
 					'runScan'      => __( 'Run Scan', 'local-image-premium-support' ),
+					'rescan'       => __( 'Rescan', 'local-image-premium-support' ),
 					'scanError'    => __( 'Scan failed. Please try again.', 'local-image-premium-support' ),
 					'scanComplete' => __( 'Scan complete.', 'local-image-premium-support' ),
 					'noResults'       => __( 'No images found in the selected post types.', 'local-image-premium-support' ),
@@ -160,6 +168,9 @@ class LIPS_Image_Alts {
 		$preview_post_id = self::get_preview_post_id();
 		$preview_alt     = self::build_alt_string( $preview_post_id, $settings );
 		$show_focus      = self::is_smartcrawl_active();
+		$saved_scan      = self::get_saved_scan();
+		$saved_rows      = $saved_scan['rows'];
+		$has_saved_scan  = ! empty( $saved_scan['scanned_at'] );
 		?>
 		<h2 class="lips-li-tools-panel__title"><?php esc_html_e( 'Image Alts', 'local-image-premium-support' ); ?></h2>
 
@@ -224,7 +235,7 @@ class LIPS_Image_Alts {
 
 		<section class="lips-alt-scanner" id="lips-alt-scanner">
 			<h3 class="lips-alt-scanner__title"><?php esc_html_e( 'Scan Images', 'local-image-premium-support' ); ?></h3>
-			<p class="lips-alt-scanner__desc"><?php esc_html_e( 'Scan published content for images used in the body or as featured images. Unused media library files are skipped.', 'local-image-premium-support' ); ?></p>
+			<p class="lips-alt-scanner__desc"><?php esc_html_e( 'Scan published content for images used on the front end. Empty alts are saved to the media library and are not overwritten once set. Purge any page cache after a scan so stored alts appear in cached HTML.', 'local-image-premium-support' ); ?></p>
 
 			<fieldset class="lips-alt-scanner__post-types">
 				<legend class="lips-alt-scanner__post-types-legend"><?php esc_html_e( 'Post types to scan', 'local-image-premium-support' ); ?></legend>
@@ -244,30 +255,40 @@ class LIPS_Image_Alts {
 				<?php endforeach; ?>
 			</fieldset>
 
-			<div class="lips-alt-scanner__summary" id="lips-alt-scanner-summary" hidden>
+			<p class="lips-alt-scanner__last" id="lips-alt-scan-last" <?php echo $has_saved_scan ? '' : 'hidden'; ?>>
+				<?php
+				printf(
+					/* translators: %s: date and time of the last image scan. */
+					esc_html__( 'Last scanned %s. Results stay here until you rescan.', 'local-image-premium-support' ),
+					'<time id="lips-alt-scan-last-time">' . esc_html( $has_saved_scan ? self::format_scan_timestamp( $saved_scan['scanned_at'] ) : '' ) . '</time>'
+				);
+				?>
+			</p>
+
+			<div class="lips-alt-scanner__summary" id="lips-alt-scanner-summary" <?php echo $has_saved_scan ? '' : 'hidden'; ?>>
 				<div class="lips-alt-scanner__stat">
 					<span class="lips-alt-scanner__stat-label"><?php esc_html_e( 'Images found', 'local-image-premium-support' ); ?></span>
-					<strong id="lips-alt-stat-total">0</strong>
+					<strong id="lips-alt-stat-total"><?php echo esc_html( (string) $saved_scan['total'] ); ?></strong>
 				</div>
 				<div class="lips-alt-scanner__stat">
 					<span class="lips-alt-scanner__stat-label"><?php esc_html_e( 'Missing rendered alt', 'local-image-premium-support' ); ?></span>
-					<strong id="lips-alt-stat-missing">0</strong>
+					<strong id="lips-alt-stat-missing"><?php echo esc_html( (string) $saved_scan['missing'] ); ?></strong>
 				</div>
 				<div class="lips-alt-scanner__stat">
 					<span class="lips-alt-scanner__stat-label"><?php esc_html_e( 'With rendered alt', 'local-image-premium-support' ); ?></span>
-					<strong id="lips-alt-stat-with">0</strong>
+					<strong id="lips-alt-stat-with"><?php echo esc_html( (string) $saved_scan['with_alt'] ); ?></strong>
 				</div>
 			</div>
 
 			<div class="lips-alt-scanner__controls">
-				<button type="button" class="button button-primary" id="lips-alt-run-scan"><?php esc_html_e( 'Run Scan', 'local-image-premium-support' ); ?></button>
+				<button type="button" class="button button-primary" id="lips-alt-run-scan"><?php echo esc_html( $has_saved_scan ? __( 'Rescan', 'local-image-premium-support' ) : __( 'Run Scan', 'local-image-premium-support' ) ); ?></button>
 				<div class="lips-alt-scanner__progress" id="lips-alt-scan-progress" hidden>
 					<div class="lips-alt-scanner__progress-bar" id="lips-alt-scan-progress-bar"></div>
 					<span class="lips-alt-scanner__progress-text" id="lips-alt-scan-progress-text"></span>
 				</div>
 			</div>
 
-			<div class="lips-alt-scanner__table-wrap" id="lips-alt-scanner-results" hidden>
+			<div class="lips-alt-scanner__table-wrap" id="lips-alt-scanner-results" <?php echo $has_saved_scan ? '' : 'hidden'; ?>>
 				<table class="lips-alt-scanner__table">
 					<thead>
 						<tr>
@@ -279,7 +300,17 @@ class LIPS_Image_Alts {
 							<th scope="col"><?php esc_html_e( 'Usage', 'local-image-premium-support' ); ?></th>
 						</tr>
 					</thead>
-					<tbody id="lips-alt-scanner-body"></tbody>
+					<tbody id="lips-alt-scanner-body">
+						<?php
+						if ( $has_saved_scan && empty( $saved_rows ) ) {
+							echo '<tr><td colspan="6">' . esc_html__( 'No images found in the selected post types.', 'local-image-premium-support' ) . '</td></tr>';
+						}
+
+						foreach ( $saved_rows as $row ) {
+							self::render_scan_result_row( $row );
+						}
+						?>
+					</tbody>
 				</table>
 			</div>
 		</section>
@@ -287,71 +318,78 @@ class LIPS_Image_Alts {
 	}
 
 	/**
-	 * Inject alt on WordPress attachment images.
+	 * Inject alt on WordPress attachment images and store it when missing.
 	 */
 	public static function filter_attachment_attributes( $attr, $attachment, $size ) {
 		unset( $size );
 
-		if ( ! empty( $attr['alt'] ) || ! self::has_active_settings() ) {
+		if ( is_admin() || ! empty( $attr['alt'] ) ) {
 			return $attr;
 		}
 
-		$post_id = self::resolve_context_post_id( is_object( $attachment ) ? (int) $attachment->ID : 0 );
+		$attachment_id = is_object( $attachment ) ? (int) $attachment->ID : 0;
+		$alt           = self::resolve_alt_for_attachment( $attachment_id );
 
-		if ( ! $post_id ) {
+		if ( '' === $alt ) {
 			return $attr;
 		}
 
-		$alt = self::get_alt_for_post( $post_id );
-
-		if ( $alt ) {
-			$attr['alt'] = $alt;
-		}
+		$attr['alt'] = $alt;
+		self::maybe_persist_attachment_alt( $attachment_id, $alt );
 
 		return $attr;
 	}
 
 	/**
-	 * Inject alt on raw img tags in post content.
+	 * Inject alt on images rendered inside blocks, including template parts.
+	 */
+	public static function filter_rendered_block( $block_content, $block ) {
+		unset( $block );
+
+		return self::filter_content_images( $block_content );
+	}
+
+	/**
+	 * Inject alt on raw img tags and store it on the attachment when possible.
 	 */
 	public static function filter_content_images( $content ) {
-		if ( ! is_string( $content ) || false === strpos( $content, '<img' ) || ! self::has_active_settings() ) {
+		if ( is_admin() || ! is_string( $content ) || false === stripos( $content, '<img' ) ) {
 			return $content;
 		}
 
-		$post_id = self::resolve_context_post_id( 0 );
-
-		if ( ! $post_id ) {
-			return $content;
-		}
-
-		$alt = self::get_alt_for_post( $post_id );
-
-		if ( ! $alt ) {
-			return $content;
-		}
+		$context_post_id = self::resolve_context_post_id( 0 );
 
 		return preg_replace_callback(
 			'/<img\b[^>]*>/i',
-			function ( $matches ) use ( $alt ) {
-				$tag = $matches[0];
-
-				if ( preg_match( '/\salt=(["\'])(.*?)\1/i', $tag, $alt_match ) && '' !== trim( $alt_match[2] ) ) {
-					return $tag;
-				}
-
-				if ( preg_match( '/\salt=(["\'])\1/i', $tag ) ) {
-					return preg_replace( '/\salt=(["\'])\1/i', 'alt="' . esc_attr( $alt ) . '"', $tag, 1 );
-				}
-
-				if ( preg_match( '/\salt=(["\'])(.*?)\1/i', $tag ) ) {
-					return preg_replace( '/\salt=(["\'])(.*?)\1/i', 'alt="' . esc_attr( $alt ) . '"', $tag, 1 );
-				}
-
-				return preg_replace( '/<img/i', '<img alt="' . esc_attr( $alt ) . '"', $tag, 1 );
+			function ( $matches ) use ( $context_post_id ) {
+				return self::inject_alt_into_img_tag( $matches[0], $context_post_id );
 			},
 			$content
 		);
+	}
+
+	/**
+	 * Keep the image scan query at its batch size if another plugin changes it.
+	 */
+	public static function preserve_scan_query_args( $query ) {
+		if ( ! $query instanceof WP_Query || empty( $query->query['lips_image_alts_scan'] ) ) {
+			return;
+		}
+
+		$original = $query->query;
+
+		$query->set( 'posts_per_page', self::SCAN_BATCH );
+		$query->set( 'post_status', 'publish' );
+		$query->set( 'ignore_sticky_posts', true );
+		$query->set( 'no_found_rows', false );
+
+		if ( isset( $original['post_type'] ) ) {
+			$query->set( 'post_type', $original['post_type'] );
+		}
+
+		if ( isset( $original['offset'] ) ) {
+			$query->set( 'offset', $original['offset'] );
+		}
 	}
 
 	/**
@@ -371,6 +409,7 @@ class LIPS_Image_Alts {
 
 		if ( 0 === $offset ) {
 			delete_transient( $registry_key );
+			delete_option( self::SCAN_BUFFER_OPTION );
 		}
 
 		$registry = get_transient( $registry_key );
@@ -389,8 +428,11 @@ class LIPS_Image_Alts {
 				'order'                  => 'ASC',
 				'fields'                 => 'ids',
 				'no_found_rows'          => false,
+				'ignore_sticky_posts'    => true,
+				'cache_results'          => false,
 				'update_post_meta_cache' => false,
 				'update_post_term_cache' => false,
+				'lips_image_alts_scan'   => true,
 			)
 		);
 
@@ -423,16 +465,155 @@ class LIPS_Image_Alts {
 
 		set_transient( $registry_key, $registry, 15 * MINUTE_IN_SECONDS );
 
+		$found_posts = (int) $query->found_posts;
+		$finished    = ( $offset + count( $query->posts ) ) >= $found_posts;
+		$scanned_at  = self::store_scan_batch( $rows, $finished );
+
 		wp_send_json_success(
 			array(
 				'rows'         => $rows,
 				'offset'       => $offset,
 				'batch'        => count( $query->posts ),
-				'total'        => (int) $query->found_posts,
+				'total'        => $found_posts,
 				'images_found' => count( $registry ),
-				'has_more'     => ( $offset + count( $query->posts ) ) < (int) $query->found_posts,
+				'has_more'     => ! $finished,
+				'scanned_at'   => $scanned_at,
 			)
 		);
+	}
+
+	/**
+	 * Last completed scan saved for the Image Alts screen.
+	 */
+	private static function get_saved_scan() {
+		$saved = get_option( self::SCAN_RESULTS_OPTION, array() );
+
+		if ( ! is_array( $saved ) ) {
+			$saved = array();
+		}
+
+		$rows = isset( $saved['rows'] ) && is_array( $saved['rows'] ) ? $saved['rows'] : array();
+
+		return array(
+			'scanned_at' => isset( $saved['scanned_at'] ) ? (int) $saved['scanned_at'] : 0,
+			'rows'       => $rows,
+			'total'      => isset( $saved['total'] ) ? (int) $saved['total'] : count( $rows ),
+			'missing'    => isset( $saved['missing'] ) ? (int) $saved['missing'] : 0,
+			'with_alt'   => isset( $saved['with_alt'] ) ? (int) $saved['with_alt'] : 0,
+		);
+	}
+
+	/**
+	 * Append a scan batch. The visible result set is replaced only when the scan finishes.
+	 */
+	private static function store_scan_batch( $rows, $finished ) {
+		$buffer = get_option( self::SCAN_BUFFER_OPTION, array() );
+
+		if ( ! is_array( $buffer ) ) {
+			$buffer = array();
+		}
+
+		if ( $rows ) {
+			$buffer = array_merge( $buffer, $rows );
+			update_option( self::SCAN_BUFFER_OPTION, $buffer, false );
+		}
+
+		if ( ! $finished ) {
+			return '';
+		}
+
+		$missing = 0;
+		$with    = 0;
+
+		foreach ( $buffer as $row ) {
+			if ( ! empty( $row['has_alt'] ) ) {
+				$with++;
+			} else {
+				$missing++;
+			}
+		}
+
+		$scanned_at = time();
+
+		update_option(
+			self::SCAN_RESULTS_OPTION,
+			array(
+				'scanned_at' => $scanned_at,
+				'rows'       => $buffer,
+				'total'      => count( $buffer ),
+				'missing'    => $missing,
+				'with_alt'   => $with,
+			),
+			false
+		);
+
+		delete_option( self::SCAN_BUFFER_OPTION );
+
+		return self::format_scan_timestamp( $scanned_at );
+	}
+
+	/**
+	 * Display date for a stored scan.
+	 */
+	private static function format_scan_timestamp( $timestamp ) {
+		$timestamp = (int) $timestamp;
+
+		if ( ! $timestamp ) {
+			return '';
+		}
+
+		return wp_date(
+			get_option( 'date_format' ) . ' ' . get_option( 'time_format' ),
+			$timestamp
+		);
+	}
+
+	/**
+	 * One saved scanner row.
+	 */
+	private static function render_scan_result_row( $row ) {
+		if ( ! is_array( $row ) ) {
+			return;
+		}
+
+		$thumbnail = isset( $row['thumbnail'] ) ? (string) $row['thumbnail'] : '';
+		$filename  = isset( $row['filename'] ) ? (string) $row['filename'] : '';
+		$url       = isset( $row['url'] ) ? (string) $row['url'] : '';
+		$stored    = isset( $row['stored_alt'] ) ? (string) $row['stored_alt'] : '';
+		$rendered  = isset( $row['effective_alt'] ) ? (string) $row['effective_alt'] : '';
+		$dynamic   = ! empty( $row['is_dynamic'] );
+		$usage     = isset( $row['usage'] ) ? (string) $row['usage'] : '';
+		?>
+		<tr>
+			<td>
+				<?php if ( $thumbnail ) : ?>
+					<img class="lips-alt-scanner__thumb" src="<?php echo esc_url( $thumbnail ); ?>" alt="" width="50" height="50">
+				<?php else : ?>
+					—
+				<?php endif; ?>
+			</td>
+			<td><?php echo esc_html( $filename ? $filename : '—' ); ?></td>
+			<td>
+				<?php if ( $url ) : ?>
+					<a href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener noreferrer"><?php echo esc_html( $url ); ?></a>
+				<?php else : ?>
+					—
+				<?php endif; ?>
+			</td>
+			<td class="<?php echo '' === $stored ? 'is-muted' : ''; ?>"><?php echo esc_html( '' !== $stored ? $stored : __( 'None', 'local-image-premium-support' ) ); ?></td>
+			<td class="<?php echo '' === $rendered ? 'is-missing' : ''; ?>">
+				<?php if ( '' !== $rendered ) : ?>
+					<?php echo esc_html( $rendered ); ?>
+					<?php if ( $dynamic ) : ?>
+						<br><span class="lips-alt-scanner__badge"><?php esc_html_e( 'Dynamic', 'local-image-premium-support' ); ?></span>
+					<?php endif; ?>
+				<?php else : ?>
+					<?php esc_html_e( 'None', 'local-image-premium-support' ); ?>
+				<?php endif; ?>
+			</td>
+			<td><?php echo esc_html( '' !== $usage ? $usage : '—' ); ?></td>
+		</tr>
+		<?php
 	}
 
 	/**
@@ -441,12 +622,20 @@ class LIPS_Image_Alts {
 	private static function build_scan_row( $attachment_id, $context_post_id, $registry_entry ) {
 		$attachment_id   = (int) $attachment_id;
 		$context_post_id = (int) $context_post_id;
-		$file            = get_attached_file( $attachment_id );
-		$filename        = $file ? wp_basename( $file ) : get_the_title( $attachment_id );
-		$url             = wp_get_attachment_url( $attachment_id );
-		$stored_alt      = trim( (string) get_post_meta( $attachment_id, '_wp_attachment_image_alt', true ) );
-		$effective_alt   = self::get_effective_alt_for_scan( $stored_alt, $context_post_id );
-		$thumb           = wp_get_attachment_image_url( $attachment_id, 'thumbnail' );
+		$file       = get_attached_file( $attachment_id );
+		$filename   = $file ? wp_basename( $file ) : get_the_title( $attachment_id );
+		$url        = wp_get_attachment_url( $attachment_id );
+		$stored_alt = self::get_stored_attachment_alt( $attachment_id );
+
+		if ( '' === $stored_alt && $context_post_id && self::has_active_settings() ) {
+			$generated = self::get_alt_for_post( $context_post_id );
+
+			if ( '' !== $generated && self::persist_attachment_alt( $attachment_id, $generated ) ) {
+				$stored_alt = $generated;
+			}
+		}
+
+		$thumb = wp_get_attachment_image_url( $attachment_id, 'thumbnail' );
 
 		return array(
 			'id'            => $attachment_id,
@@ -454,9 +643,9 @@ class LIPS_Image_Alts {
 			'filename'      => $filename,
 			'url'           => $url ? $url : '',
 			'stored_alt'    => $stored_alt,
-			'effective_alt' => $effective_alt,
-			'is_dynamic'    => '' === $stored_alt && '' !== $effective_alt,
-			'has_alt'       => '' !== $effective_alt,
+			'effective_alt' => $stored_alt,
+			'is_dynamic'    => false,
+			'has_alt'       => '' !== $stored_alt,
 			'usage'         => self::format_scan_usage( $registry_entry ),
 		);
 	}
@@ -465,43 +654,104 @@ class LIPS_Image_Alts {
 	 * Images used on a page or post (featured and in content).
 	 */
 	private static function get_post_image_map( $post_id ) {
-		$post_id  = (int) $post_id;
-		$images   = array();
+		$post_id = (int) $post_id;
+		$images  = array();
 		$featured = (int) get_post_thumbnail_id( $post_id );
 
-		if ( $featured && wp_attachment_is_image( $featured ) ) {
-			$images[ $featured ] = array(
-				'featured' => true,
-				'content'  => false,
-			);
-		}
+		self::add_image_usage( $images, $featured, 'featured' );
 
-		$content = (string) get_post_field( 'post_content', $post_id );
+		$blobs = array(
+			(string) get_post_field( 'post_content', $post_id ),
+			(string) get_post_meta( $post_id, '_elementor_data', true ),
+		);
 
-		if ( '' !== $content ) {
-			preg_match_all( '/wp-image-(\d+)/', $content, $matches );
-
-			if ( ! empty( $matches[1] ) ) {
-				foreach ( $matches[1] as $attachment_id ) {
-					$attachment_id = (int) $attachment_id;
-
-					if ( ! $attachment_id || ! wp_attachment_is_image( $attachment_id ) ) {
-						continue;
-					}
-
-					if ( ! isset( $images[ $attachment_id ] ) ) {
-						$images[ $attachment_id ] = array(
-							'featured' => false,
-							'content'  => true,
-						);
-					} else {
-						$images[ $attachment_id ]['content'] = true;
-					}
-				}
+		foreach ( $blobs as $blob ) {
+			foreach ( self::extract_attachment_ids_from_blob( $blob ) as $attachment_id ) {
+				self::add_image_usage( $images, $attachment_id, 'content' );
 			}
 		}
 
 		return $images;
+	}
+
+	/**
+	 * Record how an attachment is used on the post being scanned.
+	 */
+	private static function add_image_usage( &$images, $attachment_id, $usage ) {
+		$attachment_id = (int) $attachment_id;
+
+		if ( ! $attachment_id || ! wp_attachment_is_image( $attachment_id ) ) {
+			return;
+		}
+
+		if ( ! isset( $images[ $attachment_id ] ) ) {
+			$images[ $attachment_id ] = array(
+				'featured' => false,
+				'content'  => false,
+			);
+		}
+
+		if ( isset( $images[ $attachment_id ][ $usage ] ) ) {
+			$images[ $attachment_id ][ $usage ] = true;
+		}
+	}
+
+	/**
+	 * Attachment IDs referenced in post HTML, blocks, shortcodes, or builder data.
+	 */
+	private static function extract_attachment_ids_from_blob( $blob ) {
+		if ( ! is_string( $blob ) || '' === $blob ) {
+			return array();
+		}
+
+		$blob = str_replace( '\/', '/', $blob );
+		$ids  = array();
+
+		if ( preg_match_all( '/wp-image-(\d+)/', $blob, $matches ) ) {
+			foreach ( $matches[1] as $attachment_id ) {
+				$ids[] = (int) $attachment_id;
+			}
+		}
+
+		if ( preg_match_all( '/"(?:id|mediaId)"\s*:\s*"?(\d+)"?/', $blob, $matches ) ) {
+			foreach ( $matches[1] as $attachment_id ) {
+				$ids[] = (int) $attachment_id;
+			}
+		}
+
+		if ( preg_match_all( '/"ids"\s*:\s*\[([0-9,\s]+)\]/', $blob, $lists ) ) {
+			foreach ( $lists[1] as $list ) {
+				foreach ( explode( ',', $list ) as $attachment_id ) {
+					$ids[] = (int) $attachment_id;
+				}
+			}
+		}
+
+		if ( preg_match_all( '/\[gallery\b[^\]]*ids=(["\'])([^"\']+)\1/', $blob, $galleries ) ) {
+			foreach ( $galleries[2] as $list ) {
+				foreach ( explode( ',', $list ) as $attachment_id ) {
+					$ids[] = (int) $attachment_id;
+				}
+			}
+		}
+
+		if ( preg_match_all( '/<img\b[^>]*\bsrc=(["\'])([^"\']+)\1/i', $blob, $sources ) ) {
+			foreach ( $sources[2] as $src ) {
+				$ids[] = self::attachment_id_from_url( $src );
+			}
+		}
+
+		if ( preg_match_all( '#https?://[^"\'\s>]+\.(?:jpe?g|png|gif|webp|avif)(?:\?[^"\'\s>]*)?#i', $blob, $urls ) ) {
+			foreach ( $urls[0] as $url ) {
+				if ( false === strpos( $url, '/uploads/' ) ) {
+					continue;
+				}
+
+				$ids[] = self::attachment_id_from_url( $url );
+			}
+		}
+
+		return array_values( array_unique( array_filter( $ids ) ) );
 	}
 
 	/**
@@ -692,41 +942,210 @@ class LIPS_Image_Alts {
 	 * Resolve post context for alt generation.
 	 */
 	private static function resolve_context_post_id( $attachment_id = 0 ) {
-		$post_id = (int) get_queried_object_id();
+		if ( is_singular() ) {
+			$post_id = (int) get_queried_object_id();
 
-		if ( $post_id ) {
-			return $post_id;
-		}
-
-		if ( $attachment_id ) {
-			$parent_id = (int) wp_get_post_parent_id( $attachment_id );
-			if ( $parent_id ) {
-				return $parent_id;
+			if ( self::is_alt_context_post( $post_id ) ) {
+				return $post_id;
 			}
 		}
 
 		global $post;
 
-		if ( isset( $post->ID ) ) {
+		if ( isset( $post->ID ) && self::is_alt_context_post( (int) $post->ID ) ) {
 			return (int) $post->ID;
+		}
+
+		if ( $attachment_id ) {
+			$parent_id = (int) wp_get_post_parent_id( $attachment_id );
+
+			if ( self::is_alt_context_post( $parent_id ) ) {
+				return $parent_id;
+			}
 		}
 
 		return 0;
 	}
 
 	/**
-	 * Effective alt for scanner rows (stored meta or dynamic render).
+	 * Whether a post can supply page title, slug, and focus keyword context.
 	 */
-	private static function get_effective_alt_for_scan( $stored_alt, $context_post_id ) {
+	private static function is_alt_context_post( $post_id ) {
+		$post_id = (int) $post_id;
+
+		if ( ! $post_id ) {
+			return false;
+		}
+
+		$post_type = get_post_type( $post_id );
+
+		if ( ! is_string( $post_type ) || '' === $post_type ) {
+			return false;
+		}
+
+		$excluded = array(
+			'attachment',
+			'revision',
+			'nav_menu_item',
+			'wp_template',
+			'wp_template_part',
+			'wp_navigation',
+			'wp_global_styles',
+		);
+
+		return ! in_array( $post_type, $excluded, true );
+	}
+
+	/**
+	 * Fill an empty alt on one img tag, preferring the saved attachment alt.
+	 */
+	private static function inject_alt_into_img_tag( $tag, $context_post_id ) {
+		if ( preg_match( '/\salt=(["\'])(.*?)\1/i', $tag, $alt_match ) && '' !== trim( $alt_match[2] ) ) {
+			return $tag;
+		}
+
+		$attachment_id = self::attachment_id_from_img_tag( $tag );
+		$alt           = '';
+
+		if ( $attachment_id ) {
+			$alt = self::resolve_alt_for_attachment( $attachment_id, $context_post_id );
+
+			if ( '' !== $alt ) {
+				self::maybe_persist_attachment_alt( $attachment_id, $alt );
+			}
+		} elseif ( $context_post_id && self::has_active_settings() ) {
+			$alt = self::get_alt_for_post( $context_post_id );
+		}
+
+		if ( '' === $alt ) {
+			return $tag;
+		}
+
+		$escaped = esc_attr( $alt );
+
+		if ( preg_match( '/\salt=(["\']).*?\1/i', $tag ) ) {
+			return preg_replace( '/\salt=(["\']).*?\1/i', 'alt="' . $escaped . '"', $tag, 1 );
+		}
+
+		return preg_replace( '/<img/i', '<img alt="' . $escaped . '"', $tag, 1 );
+	}
+
+	/**
+	 * Saved media-library alt, or a generated alt from the current page.
+	 */
+	private static function resolve_alt_for_attachment( $attachment_id, $context_post_id = null ) {
+		$attachment_id = (int) $attachment_id;
+		$stored_alt    = self::get_stored_attachment_alt( $attachment_id );
+
 		if ( '' !== $stored_alt ) {
 			return $stored_alt;
 		}
 
-		if ( ! self::has_active_settings() || ! $context_post_id ) {
+		if ( ! self::has_active_settings() ) {
 			return '';
 		}
 
-		return self::get_alt_for_post( (int) $context_post_id );
+		if ( null === $context_post_id ) {
+			$context_post_id = self::resolve_context_post_id( $attachment_id );
+		}
+
+		$context_post_id = (int) $context_post_id;
+
+		if ( ! $context_post_id ) {
+			return '';
+		}
+
+		return self::get_alt_for_post( $context_post_id );
+	}
+
+	/**
+	 * Alt text already stored on the attachment.
+	 */
+	private static function get_stored_attachment_alt( $attachment_id ) {
+		return trim( (string) get_post_meta( (int) $attachment_id, '_wp_attachment_image_alt', true ) );
+	}
+
+	/**
+	 * Save an alt only when the attachment does not already have one.
+	 */
+	private static function persist_attachment_alt( $attachment_id, $alt ) {
+		$attachment_id = (int) $attachment_id;
+		$alt           = trim( (string) $alt );
+
+		if ( ! $attachment_id || '' === $alt || ! wp_attachment_is_image( $attachment_id ) ) {
+			return false;
+		}
+
+		if ( '' !== self::get_stored_attachment_alt( $attachment_id ) ) {
+			return false;
+		}
+
+		return (bool) update_post_meta( $attachment_id, '_wp_attachment_image_alt', sanitize_text_field( $alt ) );
+	}
+
+	/**
+	 * Persist from a front-end render. Admin, REST, and cron requests only display the alt.
+	 */
+	private static function maybe_persist_attachment_alt( $attachment_id, $alt ) {
+		if ( is_admin() || wp_doing_ajax() || wp_doing_cron() || is_feed() || is_customize_preview() ) {
+			return false;
+		}
+
+		if ( defined( 'REST_REQUEST' ) && REST_REQUEST ) {
+			return false;
+		}
+
+		return self::persist_attachment_alt( $attachment_id, $alt );
+	}
+
+	/**
+	 * Attachment ID from an img tag class or file URL.
+	 */
+	private static function attachment_id_from_img_tag( $tag ) {
+		if ( preg_match( '/wp-image-(\d+)/', $tag, $match ) ) {
+			return (int) $match[1];
+		}
+
+		if ( preg_match( '/\bsrc=(["\'])([^"\']+)\1/i', $tag, $match ) ) {
+			return self::attachment_id_from_url( $match[2] );
+		}
+
+		return 0;
+	}
+
+	/**
+	 * Resolve an uploads URL, including resized filenames, to an attachment ID.
+	 */
+	private static function attachment_id_from_url( $url ) {
+		static $cache = array();
+
+		$url = trim( (string) $url );
+
+		if ( '' === $url ) {
+			return 0;
+		}
+
+		$url = html_entity_decode( $url, ENT_QUOTES );
+		$url = strtok( $url, '?' );
+
+		if ( isset( $cache[ $url ] ) ) {
+			return $cache[ $url ];
+		}
+
+		$attachment_id = (int) attachment_url_to_postid( $url );
+
+		if ( ! $attachment_id ) {
+			$stripped = preg_replace( '/-\d+x\d+(?=\.[a-zA-Z0-9]+$)/', '', $url );
+			$stripped = is_string( $stripped ) ? preg_replace( '/-scaled(?=\.[a-zA-Z0-9]+$)/', '', $stripped ) : $url;
+
+			if ( is_string( $stripped ) && $stripped !== $url ) {
+				$attachment_id = (int) attachment_url_to_postid( $stripped );
+			}
+		}
+
+		$cache[ $url ] = $attachment_id;
+
+		return $attachment_id;
 	}
 
 	/**
