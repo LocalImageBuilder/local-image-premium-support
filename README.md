@@ -4,7 +4,7 @@ Tags: hosting, support
 Requires at least: 5.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 1.0.12
+Stable tag: 1.0.13
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -15,6 +15,9 @@ Premium hosting plugin for support and upgrades. Only at Local Image.
 Premium hosting plugin for support and support desk integration. Only at Local Image.
 
 == Changelog ==
+
+= 1.0.13 =
+* Add an Image Alts option to replace existing alt text. It is off by default.
 
 = 1.0.12 =
 * Save generated image alts to the media library and detect more front-end images.

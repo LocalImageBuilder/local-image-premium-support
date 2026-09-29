@@ -32,7 +32,7 @@ register_deactivation_hook( LIPS_PLUGIN_FILE, array( 'SEV_Checker', 'cleanup' ) 
  * Enqueue admin styles and fonts.
  */
 function lips_admin_scripts() {
-	wp_enqueue_style( 'lips-support-styles', LIPS_CORE_CSS . 'admin-styles-min.css', array(), '1.0.12' );
+	wp_enqueue_style( 'lips-support-styles', LIPS_CORE_CSS . 'admin-styles-min.css', array(), '1.0.13' );
 	wp_enqueue_style( 'google-now-bold', 'https://fonts.googleapis.com/css?family=Google+Now:wght@700&display=swap', array(), '1.0' );
 	wp_enqueue_style( 'moontime', 'https://fonts.googleapis.com/css?family=Moontime&display=swap', array(), '1.0' );
 }
@@ -41,7 +41,7 @@ function lips_admin_scripts() {
  * Enqueue login screen styles.
  */
 function lips_login_logo_and_styles() {
-	wp_enqueue_style( 'lips-login', LIPS_CORE_CSS . 'login-min.css', array(), '1.0.12' );
+	wp_enqueue_style( 'lips-login', LIPS_CORE_CSS . 'login-min.css', array(), '1.0.13' );
 }
 
 /**

@@ -288,6 +288,11 @@
 	white-space: nowrap;
 }
 
+.lips-alt-builder__option--separate {
+	flex: 0 0 100%;
+	margin-top: 8px;
+}
+
 .lips-alt-builder__badge {
 	display: inline-block;
 	padding: 2px 8px;

@@ -37,8 +37,9 @@ class LIPS_Image_Alts {
 			'page_title'      => false,
 			'site_title'      => false,
 			'page_slug'       => false,
-			'focus_keyword'   => false,
-			'scan_post_types' => array( 'post', 'page' ),
+			'focus_keyword'      => false,
+			'override_existing'  => false,
+			'scan_post_types'    => array( 'post', 'page' ),
 		);
 	}
 
@@ -106,8 +107,9 @@ class LIPS_Image_Alts {
 			'page_title'      => ! empty( $_POST['lips_alt_page_title'] ),
 			'site_title'      => ! empty( $_POST['lips_alt_site_title'] ),
 			'page_slug'       => ! empty( $_POST['lips_alt_page_slug'] ),
-			'focus_keyword'   => ! empty( $_POST['lips_alt_focus_keyword'] ),
-			'scan_post_types' => self::sanitize_scan_post_types( $scan_post_types ),
+			'focus_keyword'      => ! empty( $_POST['lips_alt_focus_keyword'] ),
+			'override_existing'  => ! empty( $_POST['lips_alt_override_existing'] ),
+			'scan_post_types'    => self::sanitize_scan_post_types( $scan_post_types ),
 		);
 
 		update_option( self::OPTION_KEY, $settings );
@@ -214,6 +216,12 @@ class LIPS_Image_Alts {
 						<span class="lips-alt-builder__badge"><?php esc_html_e( 'SmartCrawl', 'local-image-premium-support' ); ?></span>
 					</label>
 				<?php endif; ?>
+
+				<label class="lips-alt-builder__option lips-alt-builder__option--separate">
+					<input type="checkbox" name="lips_alt_override_existing" value="1" <?php checked( ! empty( $settings['override_existing'] ) ); ?>>
+					<?php esc_html_e( 'Override existing alts', 'local-image-premium-support' ); ?>
+				</label>
+				<p class="lips-alt-builder__hint"><?php esc_html_e( 'Off by default. When enabled, generated alt text replaces alt text that is already set.', 'local-image-premium-support' ); ?></p>
 			</fieldset>
 
 			<div class="lips-alt-preview">
@@ -323,7 +331,7 @@ class LIPS_Image_Alts {
 	public static function filter_attachment_attributes( $attr, $attachment, $size ) {
 		unset( $size );
 
-		if ( is_admin() || ! empty( $attr['alt'] ) ) {
+		if ( is_admin() || ( ! empty( $attr['alt'] ) && ! self::should_override_existing() ) ) {
 			return $attr;
 		}
 
@@ -627,7 +635,9 @@ class LIPS_Image_Alts {
 		$url        = wp_get_attachment_url( $attachment_id );
 		$stored_alt = self::get_stored_attachment_alt( $attachment_id );
 
-		if ( '' === $stored_alt && $context_post_id && self::has_active_settings() ) {
+		$can_write = $context_post_id && self::has_active_settings() && ( '' === $stored_alt || self::should_override_existing() );
+
+		if ( $can_write ) {
 			$generated = self::get_alt_for_post( $context_post_id );
 
 			if ( '' !== $generated && self::persist_attachment_alt( $attachment_id, $generated ) ) {
@@ -1000,7 +1010,7 @@ class LIPS_Image_Alts {
 	 * Fill an empty alt on one img tag, preferring the saved attachment alt.
 	 */
 	private static function inject_alt_into_img_tag( $tag, $context_post_id ) {
-		if ( preg_match( '/\salt=(["\'])(.*?)\1/i', $tag, $alt_match ) && '' !== trim( $alt_match[2] ) ) {
+		if ( preg_match( '/\salt=(["\'])(.*?)\1/i', $tag, $alt_match ) && '' !== trim( $alt_match[2] ) && ! self::should_override_existing() ) {
 			return $tag;
 		}
 
@@ -1037,12 +1047,12 @@ class LIPS_Image_Alts {
 		$attachment_id = (int) $attachment_id;
 		$stored_alt    = self::get_stored_attachment_alt( $attachment_id );
 
-		if ( '' !== $stored_alt ) {
+		if ( '' !== $stored_alt && ! self::should_override_existing() ) {
 			return $stored_alt;
 		}
 
 		if ( ! self::has_active_settings() ) {
-			return '';
+			return $stored_alt;
 		}
 
 		if ( null === $context_post_id ) {
@@ -1052,10 +1062,21 @@ class LIPS_Image_Alts {
 		$context_post_id = (int) $context_post_id;
 
 		if ( ! $context_post_id ) {
-			return '';
+			return $stored_alt;
 		}
 
-		return self::get_alt_for_post( $context_post_id );
+		$generated = self::get_alt_for_post( $context_post_id );
+
+		return '' !== $generated ? $generated : $stored_alt;
+	}
+
+	/**
+	 * Whether generated alt text should replace alt text that is already set.
+	 */
+	private static function should_override_existing() {
+		$settings = self::get_settings();
+
+		return ! empty( $settings['override_existing'] );
 	}
 
 	/**
@@ -1066,21 +1087,27 @@ class LIPS_Image_Alts {
 	}
 
 	/**
-	 * Save an alt only when the attachment does not already have one.
+	 * Save generated alt text. Existing alt text is replaced only when override is enabled.
 	 */
 	private static function persist_attachment_alt( $attachment_id, $alt ) {
 		$attachment_id = (int) $attachment_id;
-		$alt           = trim( (string) $alt );
+		$alt           = sanitize_text_field( trim( (string) $alt ) );
 
 		if ( ! $attachment_id || '' === $alt || ! wp_attachment_is_image( $attachment_id ) ) {
 			return false;
 		}
 
-		if ( '' !== self::get_stored_attachment_alt( $attachment_id ) ) {
+		$existing = self::get_stored_attachment_alt( $attachment_id );
+
+		if ( '' !== $existing && ! self::should_override_existing() ) {
 			return false;
 		}
 
-		return (bool) update_post_meta( $attachment_id, '_wp_attachment_image_alt', sanitize_text_field( $alt ) );
+		if ( $existing === $alt ) {
+			return true;
+		}
+
+		return (bool) update_post_meta( $attachment_id, '_wp_attachment_image_alt', $alt );
 	}
 
 	/**
