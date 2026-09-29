@@ -27,6 +27,9 @@ class LIPS_Image_Alts {
 		add_action( 'admin_init', array( __CLASS__, 'handle_save' ) );
 		add_action( 'pre_get_posts', array( __CLASS__, 'preserve_scan_query_args' ), 9999 );
 		add_action( 'wp_ajax_lips_scan_images', array( __CLASS__, 'ajax_scan_images' ) );
+		add_filter( 'manage_media_columns', array( __CLASS__, 'add_media_list_columns' ) );
+		add_action( 'manage_media_custom_column', array( __CLASS__, 'render_media_list_column' ), 10, 2 );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_media_list_styles' ) );
 	}
 
 	/**
@@ -323,6 +326,74 @@ class LIPS_Image_Alts {
 			</div>
 		</section>
 		<?php
+	}
+
+	/**
+	 * Add Title and Alt columns to the media library list view.
+	 */
+	public static function add_media_list_columns( $columns ) {
+		$updated = array();
+
+		foreach ( $columns as $key => $label ) {
+			$updated[ $key ] = $label;
+
+			if ( 'title' === $key ) {
+				$updated['lips_attachment_title'] = __( 'Title', 'local-image-premium-support' );
+				$updated['lips_alt']              = __( 'Alt', 'local-image-premium-support' );
+			}
+		}
+
+		if ( ! isset( $updated['lips_alt'] ) ) {
+			$updated['lips_attachment_title'] = __( 'Title', 'local-image-premium-support' );
+			$updated['lips_alt']              = __( 'Alt', 'local-image-premium-support' );
+		}
+
+		return $updated;
+	}
+
+	/**
+	 * Render Title and Alt cells in the media library list view.
+	 */
+	public static function render_media_list_column( $column, $post_id ) {
+		$post_id = (int) $post_id;
+
+		if ( 'lips_attachment_title' === $column ) {
+			$title = get_the_title( $post_id );
+			echo '' !== $title ? esc_html( $title ) : esc_html( '—' );
+			return;
+		}
+
+		if ( 'lips_alt' !== $column ) {
+			return;
+		}
+
+		if ( ! wp_attachment_is_image( $post_id ) ) {
+			echo esc_html( '—' );
+			return;
+		}
+
+		$alt = trim( (string) get_post_meta( $post_id, '_wp_attachment_image_alt', true ) );
+
+		if ( '' === $alt ) {
+			echo '<span class="lips-media-alt-empty">' . esc_html__( 'None', 'local-image-premium-support' ) . '</span>';
+			return;
+		}
+
+		echo esc_html( $alt );
+	}
+
+	/**
+	 * Style empty alt text in the media library list view.
+	 */
+	public static function enqueue_media_list_styles( $hook ) {
+		if ( 'upload.php' !== $hook ) {
+			return;
+		}
+
+		wp_add_inline_style(
+			'lips-support-styles',
+			'.lips-media-alt-empty{color:#646970;}'
+		);
 	}
 
 	/**

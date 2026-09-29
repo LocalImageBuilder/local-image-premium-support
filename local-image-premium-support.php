@@ -3,7 +3,7 @@
 Plugin Name: Local Image Premium Support
 Plugin URI: https://localimageco.com
 Description: Premium hosting plugin for support and upgrades. Only at Local Image.
-Version: 1.0.13
+Version: 1.0.14
 Author: Local Image
 Author URI: https://localimageco.com/contact
 Text Domain: local-image-premium-support
